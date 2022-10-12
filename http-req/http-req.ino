@@ -27,8 +27,8 @@
 // }
 
 */
-#define RST_PIN 9                   //Pin para el reset del RC522
-#define SS_PIN 53                   //Pin para el SS (SDA) del RC522
+#define RST_PIN 9                   //Pin para el reset del RC522 (in code use GPIO)
+#define SS_PIN 53                   //Pin para el SS (SDA) del RC522 (in code use GPIO)
 
 #define SSID "ssid"
 #define PASSWORD "password"
@@ -78,7 +78,7 @@ void loop() {
   //to do: implement HTTPS using WiFiClientSecure
   WiFiClient client;
   HTTPClient http;
-  http.begin(client, SERVER_NAME, PORT, "/", HTTPS);
+  http.begin(client, SERVER_NAME, PORT, "/", HTTPS); //to do: check for success
   http.addHeader("Content-Type", "application/json");
   
   // Make a json doc
@@ -89,8 +89,8 @@ void loop() {
 
   // Make the request
   //to do: stream json directly through the WiFiClient object
-  t_http_codes statusCode= static_cast<t_http_codes>(http.sendRequest("GET", reqBodyAsStr)); // "an ugly notation for an ugly operation" -Bjarne Stroustrup
-
+  int statusCode= http.sendRequest("GET", reqBodyAsStr);
+  
   switch (statusCode) {
     case HTTP_CODE_OK: {
       Serial.println(http.getString());
