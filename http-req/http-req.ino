@@ -36,17 +36,20 @@
 #define PORT 3000
 #define HTTPS false
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);   //Creamos el objeto para el RC522
-LiquidCrystal_I2C lcd(0x27, 20, 4);
-
 // Function Declarations
 String readCardId(void);
 void connectWiFi(void);
 //
 
+// -----CODE-----
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);   //Creamos el objeto para el RC522
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+
 // Main
 void setup() {
-  Serial.begin(9600);  //Iniciamos la comunicación  serial (hay que modificar los baudios para el esp8266)
+  Serial.begin(115200);  //Iniciamos la comunicación serial
   SPI.begin();         //Iniciamos el Bus SPI
   mfrc522.PCD_Init();  // Iniciamos  el MFRC522
 
@@ -54,14 +57,13 @@ void setup() {
   lcd.backlight();
   lcd.print("ET 35 DE 18");
 
-  connectWiFi();
-
-  Serial.println("Finished setup");
+  WiFi.begin(SSID, PASSWORD);
+  Serial.println("Connecting");
 }
 
 void loop() {
-
-  if (WiFi.status() != WL_CONNECTED) connectWiFi();
+  bool connected= wifiStatus();
+  if (!connected) return;
 
   String cardId= readCardId();
   if (cardId == "") return; // readCardId() failed
@@ -81,26 +83,25 @@ void loop() {
   
   // Make a json doc
   StaticJsonDocument<JSON_OBJECT_SIZE(1)> reqBody;
-  reqBody["cardId"]= cardId;
+  reqBody["cardId"]= cardId.c_str(); // Why does it need a c str?
   String reqBodyAsStr= "";
   serializeJson(reqBody, reqBodyAsStr);
 
   // Make the request
   //to do: stream json directly through the WiFiClient object
-  t_http_codes statusCode= http.sendRequest("GET", reqBodyAsStr);
+  t_http_codes statusCode= static_cast<t_http_codes>(http.sendRequest("GET", reqBodyAsStr)); // "an ugly notation for an ugly operation" -Bjarne Stroustrup
 
   switch (statusCode) {
     case HTTP_CODE_OK: {
       Serial.println(http.getString());
     }
     default: {
-      Serial.printf("default: %d", statusCode);
+      Serial.printf("default status code: %d", statusCode);
     }
   }
 
 }
-//
-
+// End Main
 
 // Function Definitions
 
@@ -115,10 +116,10 @@ String readCardId(void) {
   
   Serial.println("Card Present");
 
-  // Si no se pudo leer?, no hacer nada
+  // Si no se pudo leer, no hacer nada (esto salta si por ej hay algo entre la tarjeta y el lector)
   if (!mfrc522.PICC_ReadCardSerial()) {
     //to do: update lcd
-    Serial.println("no entiendo exactamente en q casos se dispara este if");
+    Serial.println("Could not read card");
     return "";
   }
 
@@ -132,44 +133,52 @@ String readCardId(void) {
   return buffer;
 }
 
-void connectWiFi(void) {
-  WiFi.begin(SSID, PASSWORD);
-  Serial.println("Connecting");
-
-  do {
-    switch (WiFi.status()) {
-      case WL_CONNECTED: {
-        Serial.println("");
-        Serial.print("Connected to WiFi network with IP Address: ");
-        Serial.println(WiFi.localIP());
-        //to do: lcd feedback
-        return;
-      }
-      case WL_IDLE_STATUS: {
-        // connecting
-        Serial.print(".");
-        continue;
-      }
-      case WL_CONNECT_FAILED: {
-        Serial.println("Connection failed. Retrying...");
-        //to do: lcd feedback
-        break;
-      }
-      case WL_WRONG_PASSWORD: {
-        //to do: lcd feedback
-        
-        // !!!!!!!!! If the code is rewritten such that the password isn't hardcoded, this should be removed !!!!!!!!!
+bool wifiStatus(void) {
+  static bool disconnected= true;
+  switch (WiFi.status()) {
+    case WL_CONNECTED: {
+      if (disconnected) {
+        disconnected= false;
+        Serial.println("Connected to WiFi network");
         Serial.println("SSID: " SSID);
         Serial.println("Password: " PASSWORD);
-        Serial.println("Got incorrect password. The password is hardcoded, the board must be reflashed");
-        Serial.println("Sleeping...");
-        ESP.deepSleep(0);
+        Serial.print("Ip: ");
+        Serial.println(WiFi.localIP());
       }
-      default: continue;
+      return true;
     }
-    // break jumps here
-    WiFi.begin(SSID, PASSWORD);
-    Serial.println("Connecting");
-  } while (true);
+    case WL_IDLE_STATUS: {
+      // connecting
+      Serial.print(".");
+      return false;
+    }
+    case WL_CONNECT_FAILED: {
+      Serial.println("Connection failed. Retrying...");
+      WiFi.begin(SSID, PASSWORD);
+      //to do: lcd feedback
+      return false;
+    }
+    case WL_DISCONNECTED: {
+      disconnected= true;
+      Serial.println("Got disconnected. Retrying...");
+      WiFi.begin(SSID, PASSWORD);
+      return false;
+    }
+    case WL_WRONG_PASSWORD: {
+      //to do: lcd feedback
+      
+      // !!!!!!!!! If the code is rewritten such that the password isn't hardcoded, this should be removed !!!!!!!!!
+      Serial.println("SSID: " SSID);
+      Serial.println("Password: " PASSWORD);
+      Serial.println("Got incorrect password. The password is hardcoded, the board must be reflashed");
+      Serial.println("Sleeping...");
+      ESP.deepSleep(0);
+      return false;
+    }
+    default: {
+      Serial.printf("wifiStatus switch: default\n");
+      return false;
+    }
+  }
 }
 //
