@@ -83,8 +83,8 @@ void loop() {
   
   // Make a json doc
   StaticJsonDocument<JSON_OBJECT_SIZE(1)> reqBody;
-  reqBody["cardId"]= cardId.c_str(); // Why does it need a c str?
-  String reqBodyAsStr= "";
+  reqBody["cardId"]= cardId.c_str();
+  String reqBodyAsStr;
   serializeJson(reqBody, reqBodyAsStr);
 
   // Make the request
@@ -123,14 +123,17 @@ String readCardId(void) {
     return "";
   }
 
-  String buffer= "";
+  //to do: implement check for allocation failure
+  std::unique_ptr<char[]> strBuffer(new char[((2 * mfrc522.uid.size) + 1) * sizeof(char)]{'\0'});
+  char hexBuffer[3]= {'\0'};
   for (byte i = 0; i < mfrc522.uid.size; i++) {
-    buffer += String(mfrc522.uid.uidByte[i], HEX);
+    sprintf(hexBuffer, "%x", mfrc522.uid.uidByte[i]); // This is preferable than String(uint, HEX) because it doesn't allocate memory
+    strcat(strBuffer.get(), hexBuffer);
   }
 
   // Finished reading
   mfrc522.PICC_HaltA();
-  return buffer;
+  return String(strBuffer.get());
 }
 
 bool wifiStatus(void) {
